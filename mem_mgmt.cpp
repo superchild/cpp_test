@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstring>
 #include <cassert>
 #include <list>
 #include <vector>
@@ -16,62 +17,74 @@ using namespace std;
 * Efficient alloc/release() - O(1)
 */
 
+struct Chunk {
+  Chunk* next;
+};
+
 class MemoryMgmt {
 public:
     MemoryMgmt(int total_size, int chunk_size) {
         int num = total_size/chunk_size;
-        
+        dummyHead.next = nullptr;
+
         for (int i=0; i<num; i++) {
             void* addr = malloc(chunk_size);
-            freeList.push_front(addr);
+            memset(addr, 0, sizeof(chunk_size));
+            Chunk* cur = static_cast<Chunk*>(addr);
+            cur->next = dummyHead.next;
+            dummyHead.next = cur;
         }
     }
 
     void* alloc() {
-        if (freeList.empty()) {
+        if (!dummyHead.next) {
             return nullptr;
         }
 
-        void* addr = freeList.front();
-        freeList.pop_front();
+        void* addr = static_cast<void*>(dummyHead.next);
+        dummyHead.next = dummyHead.next->next;
         return addr;
     }
 
     void release(void *addr) {
-        freeList.push_front(addr);
+        Chunk* cur = static_cast<Chunk*>(addr);
+        cur->next = dummyHead.next;
+        dummyHead.next = cur;
     }
 
     ~MemoryMgmt() {
-        while (!freeList.empty()) {
-            void *addr = freeList.front();
-            freeList.pop_front();
+        while (dummyHead.next) {
+            void *addr = static_cast<void*>(dummyHead.next);
+            dummyHead.next = dummyHead.next->next;
             free(addr);
         }
     }
 private:
-    list<void*> freeList;
+    Chunk dummyHead;
 };
 
 void test_alloc_release(int total_size, int chunk_size) {
     cout << "test started for total_size: " << total_size << ", chunk_size: " << chunk_size;
-    MemoryMgmt memMgt(total_size, chunk_size);
+    MemoryMgmt a(total_size, chunk_size);
     int num = total_size/chunk_size;
-    vector<void*> addrs(num, nullptr);
+    vector<Chunk*> addrs(num, nullptr);
 
     for (int i=0; i<num; i++) {
-        addrs[i] = memMgt.alloc();
+        Chunk* curAddr = static_cast<Chunk*>(a.alloc());
+        addrs[i] = curAddr;
     }
 
-    assert(!memMgt.alloc());
+    assert(!a.alloc());
     for (int i=0; i<num; i++) {
-        memMgt.release(addrs[i]);
+        a.release(addrs[i]);
     }
     
-    assert(memMgt.alloc());
+    assert(a.alloc());
     cout << "  -> test passed!" << endl;
 }
 
 int main() {
+    // the chunk size MUST larger than Chunk strcture
     test_alloc_release(100, 10);
     test_alloc_release(1000, 23);
     test_alloc_release(1000, 20);
